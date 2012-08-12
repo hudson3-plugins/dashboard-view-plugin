@@ -12,7 +12,7 @@
 	<artifactId>dashboard-view</artifactId>
 	<packaging>hpi</packaging>
 	<name>Dashboard View</name>
-	<version>2.3-h-1-SNAPSHOT</version>
+	<version>2.3-h-1</version>
 	<description>Hudson view that shows various cuts of build information via configured portlets.</description>
 	<url>http://wiki.hudson-ci.org/display/HUDSON/Dashboard+View</url>
 
