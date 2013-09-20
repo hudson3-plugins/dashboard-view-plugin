@@ -8,13 +8,13 @@ import hudson.plugins.view.dashboard.DashboardPortlet;
 import java.text.DateFormat;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import hudson.plugins.view.dashboard.Messages;
+import java.util.PriorityQueue;
 
 public class LatestBuilds extends DashboardPortlet {
 
@@ -46,21 +46,37 @@ public class LatestBuilds extends DashboardPortlet {
     *
     */
    public List<Run> getFinishedBuilds() {
-      List<Job> jobs = getDashboard().getJobs();
-      List<Run> allBuilds = new ArrayList<Run>();
-      for (Job job : jobs) {
-         List<Run> builds = job.getBuilds();
-         allBuilds.addAll(builds);
-      }
-      Collections.sort(allBuilds, Run.ORDER_BY_DATE);
-      List<Run> recentBuilds = new ArrayList<Run>();
-      if (allBuilds.size() < getNumBuilds()) {
-         recentBuilds = allBuilds;
-      } else {
-         recentBuilds = allBuilds.subList(0, getNumBuilds());
-      }
+        List<Job> jobs = getDashboardJobs();
 
-      return recentBuilds;
+        PriorityQueue<Run> queue = new PriorityQueue<Run>(numBuilds, Run.ORDER_BY_DATE);
+        for (Job job : jobs) {
+            Run lb = job.getLastBuild();
+            if (lb != null) {
+                queue.add(lb);
+            }
+        }
+
+        List<Run> recentBuilds = new ArrayList<Run>(numBuilds);
+        Run build;
+        while ((build = queue.poll()) != null) {
+            recentBuilds.add(build);
+            if (recentBuilds.size() == numBuilds) {
+                break;
+            }
+            Run pb = build.getPreviousBuild();
+            if (pb != null) {
+                queue.add(pb);
+            }
+        }
+        
+        return recentBuilds;
+   }
+
+   /**
+    * for unit test
+    */
+   protected List<Job> getDashboardJobs() {
+       return getDashboard().getJobs();
    }
 
    public String getBuildColumnSortData(Run<?, ?> build) {

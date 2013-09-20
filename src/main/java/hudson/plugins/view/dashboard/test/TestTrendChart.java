@@ -4,6 +4,7 @@ import hudson.Extension;
 import hudson.model.Descriptor;
 import hudson.model.Job;
 import hudson.model.Run;
+import hudson.plugins.view.dashboard.DashboardLog;
 import hudson.plugins.view.dashboard.DashboardPortlet;
 import hudson.util.ColorPalette;
 import hudson.util.DataSetBuilder;
@@ -27,34 +28,61 @@ import org.jfree.chart.renderer.category.StackedAreaRenderer;
 import org.jfree.data.category.CategoryDataset;
 import org.jfree.ui.RectangleInsets;
 import org.joda.time.LocalDate;
+import org.joda.time.chrono.GregorianChronology;
 import org.kohsuke.stapler.DataBoundConstructor;
 
 import hudson.plugins.view.dashboard.Messages;
+import hudson.util.EnumConverter;
+import org.kohsuke.stapler.Stapler;
 
 public class TestTrendChart extends DashboardPortlet {
 
    public enum DisplayStatus {
+      ALL("All"), SUCCESS("Success"), SKIPPED("Skipped"), FAILED("Failed");
+      
+      private final String description;
 
-      ALL, SUCCESS, SKIPPED, FAILED
+      public String getDescription() {
+         return description;
+      }
+
+      public String getName() {
+         return name();
+      }
+
+      DisplayStatus(String description) {
+         this.description = description;
+      }
+
+      static {
+         Stapler.CONVERT_UTILS.register(new EnumConverter(), DisplayStatus.class);
+      }
    }
+
    private int graphWidth = 300;
    private int graphHeight = 220;
    private int dateRange = 365;
-   private DisplayStatus display = DisplayStatus.ALL;
+   private int dateShift = 0;
+   private DisplayStatus displayStatus = DisplayStatus.ALL;
 
    @DataBoundConstructor
    public TestTrendChart(String name, int graphWidth, int graphHeight,
-           String display, int dateRange) {
+           String display, int dateRange, int dateShift) {
       super(name);
       this.graphWidth = graphWidth;
       this.graphHeight = graphHeight;
       this.dateRange = dateRange;
-
-      this.display = DisplayStatus.valueOf(display.toUpperCase());
+      this.dateShift = dateShift;
+      this.displayStatus = display != null ? DisplayStatus.valueOf(display) : DisplayStatus.ALL;
+      DashboardLog.debug("TestTrendChart", "ctor");
    }
 
    public int getDateRange() {
       return dateRange;
+   }
+   
+   public int getDateShift() {
+	   return dateShift;
    }
 
    public int getGraphWidth() {
@@ -65,8 +93,26 @@ public class TestTrendChart extends DashboardPortlet {
       return graphHeight <= 0 ? 220 : graphHeight;
    }
 
-   public String getDisplay() {
-      return display.toString();
+   public String getDisplayStatus() {
+      if (displayStatus == null)
+      {
+         displayStatus = DisplayStatus.ALL;
+         DashboardLog.info("TestTrendChart", "display is null - setting to ALL");
+      }
+      return displayStatus.getDescription();
+   }
+   
+   public void setDisplayStatus(String s) {
+      displayStatus = DisplayStatus.valueOf(s);
+   }
+   
+   public DisplayStatus getDisplayStatusEnum() {
+      if (displayStatus == null)
+      {
+         displayStatus = DisplayStatus.ALL;
+         DashboardLog.info("TestTrendChart", "display is null - setting to ALL");
+      }
+      return displayStatus;
    }
 
    /**
@@ -95,23 +141,26 @@ public class TestTrendChart extends DashboardPortlet {
               // HashMap<LocalDate,
               // TestResultSummary>();
               new TreeMap<LocalDate, TestResultSummary>(localDateComparator);
-      LocalDate today = new LocalDate();
+      LocalDate today = new LocalDate(System.currentTimeMillis() - dateShift*6000, GregorianChronology.getInstanceUTC());
 
       // for each job, for each day, add last build of the day to summary
       for (Job job : getDashboard().getJobs()) {
          Run run = job.getFirstBuild();
 
          if (run != null) { // execute only if job has builds
-            LocalDate runDay = new LocalDate(run.getTimestamp());
-            LocalDate firstDay = (dateRange != 0) ? new LocalDate().minusDays(dateRange) : runDay;
+        	 LocalDate runDay = new LocalDate(
+        			 run.getTimeInMillis() - dateShift*60000, GregorianChronology.getInstanceUTC());
+             LocalDate firstDay = (dateRange != 0) ? new LocalDate(
+            		 System.currentTimeMillis() - dateShift*6000, GregorianChronology.getInstanceUTC()).minusDays(dateRange) : runDay;
 
             while (run != null) {
-               runDay = new LocalDate(run.getTimestamp());
+               runDay = new LocalDate(
+            		   run.getTimeInMillis() - dateShift*60000, GregorianChronology.getInstanceUTC());
                Run nextRun = run.getNextBuild();
 
                if (nextRun != null) {
                   LocalDate nextRunDay = new LocalDate(
-                          nextRun.getTimestamp());
+                		  nextRun.getTimeInMillis() - dateShift*60000, GregorianChronology.getInstanceUTC());
                   // skip run before firstDay, but keep if next build is
                   // after start date
                   if (!runDay.isBefore(firstDay)
@@ -178,7 +227,7 @@ public class TestTrendChart extends DashboardPortlet {
             StackedAreaRenderer ar = new StackedAreaRenderer2();
             plot.setRenderer(ar);
 
-            switch (display) {
+            switch (getDisplayStatusEnum()) {
                case SUCCESS:
                   ar.setSeriesPaint(0, ColorPalette.BLUE);
                   break;
@@ -209,7 +258,7 @@ public class TestTrendChart extends DashboardPortlet {
       for (Map.Entry<LocalDate, TestResultSummary> entry : summaries.entrySet()) {
          LocalDateLabel label = new LocalDateLabel(entry.getKey());
 
-         switch (display) {
+         switch (getDisplayStatusEnum()) {
             case SUCCESS:
                dsb.add(entry.getValue().getSuccess(),
                        Messages.Dashboard_Total(), label);
